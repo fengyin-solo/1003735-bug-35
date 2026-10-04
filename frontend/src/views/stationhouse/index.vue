@@ -22,6 +22,9 @@
       <span v-for="item in statusSummary" :key="item.status" class="legend-item">
         {{ item.status }}：{{ item.count }}
       </span>
+      <span v-if="duplicatesRemoved > 0" class="legend-item dup-tip">
+        已按记录编号折叠重复记录 {{ duplicatesRemoved }} 条
+      </span>
     </p>
 
     <form class="filter-bar" @submit.prevent="reload">
@@ -47,7 +50,7 @@
           <td>{{ row.status }}</td>
           <td class="row-actions">
             <button
-              v-for="action in actions"
+              v-for="action in availableActions(row)"
               :key="action"
               class="link"
               type="button"
@@ -67,6 +70,9 @@
       <span>共 {{ total }} 条站房维护记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
+
+    <StationhouseAcceptPanel ref="acceptPanel" @changed="onLinkedChanged" />
+    <LedgerPanel ref="ledgerPanel" module-key="stationhouse" title="站房维护台账" show-fee />
   </section>
 </template>
 
@@ -79,8 +85,12 @@ import {
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
+import LedgerPanel from '@/components/LedgerPanel.vue'
+import StationhouseAcceptPanel from '@/components/StationhouseAcceptPanel.vue'
 import type { EntryRow } from '@/data/types'
+import { useSessionStore } from '@/stores/session'
 
+const store = useSessionStore()
 const meta = moduleMeta('stationhouse')
 const columns = ["记录编号", "站点编号", "维护类型", "维护内容", "维护单位", "维护日期", "费用支出", "维护状态"]
 const actions = ["安排维护", "确认完工", "通过验收"]
@@ -89,15 +99,32 @@ const stats = [{"label": "待维护项数", "value": 0}, {"label": "施工中项
 
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
+const duplicatesRemoved = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
+const acceptPanel = ref<InstanceType<typeof StationhouseAcceptPanel> | null>(null)
+const ledgerPanel = ref<InstanceType<typeof LedgerPanel> | null>(null)
 const statusSummary = computed(() =>
   statuses.map((status: string) => ({
     status,
     count: rows.value.filter((row) => String(row.status) === status).length,
   })),
 )
+
+// 动作按钮按前置状态显隐，未完工项不再出现「通过验收」，从界面上一并收口。
+function availableActions(row: EntryRow): string[] {
+  return actions.filter((action) => {
+    const guard = meta.actionGuards?.[action]
+    if (guard && !guard.includes(String(row.status))) {
+      return false
+    }
+    if (meta.acceptanceActions?.includes(action) && !store.canAccept) {
+      return false
+    }
+    return true
+  })
+}
 
 function resetFilters() {
   filters.value = {}
@@ -114,12 +141,22 @@ function openCreate() {
 
 function runAction(action: string, row: EntryRow) {
   errorMessage.value = ''
-  const result = applyAction(meta.key, Number(row.id), action)
+  const result = applyAction(meta.key, Number(row.id), action, {
+    role: store.role,
+    operator: store.operator,
+  })
   if (!result.ok) {
     errorMessage.value = result.message
-    return
   }
   reload()
+  acceptPanel.value?.reload()
+  ledgerPanel.value?.reload()
+}
+
+function onLinkedChanged() {
+  reload()
+  ledgerPanel.value?.reload()
+  errorMessage.value = ''
 }
 
 function reload() {
@@ -128,6 +165,7 @@ function reload() {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items
     total.value = payload.total
+    duplicatesRemoved.value = payload.duplicatesRemoved ?? 0
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '站房维护列表读取失败'
   }
@@ -135,3 +173,10 @@ function reload() {
 
 onMounted(reload)
 </script>
+
+<style scoped>
+.dup-tip {
+  background: #fef3c7;
+  color: #92400e;
+}
+</style>

@@ -22,6 +22,9 @@
       <span v-for="item in statusSummary" :key="item.status" class="legend-item">
         {{ item.status }}：{{ item.count }}
       </span>
+      <span v-if="duplicatesRemoved > 0" class="legend-item dup-tip">
+        已按记录编号折叠重复记录 {{ duplicatesRemoved }} 条
+      </span>
     </p>
 
     <form class="filter-bar" @submit.prevent="reload">
@@ -67,6 +70,9 @@
       <span>共 {{ total }} 条巡检记录记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
+
+    <StationhouseLinkPanel ref="linkPanel" />
+    <LedgerPanel ref="ledgerPanel" module-key="inspection" title="巡检台账" show-todos />
   </section>
 </template>
 
@@ -79,8 +85,12 @@ import {
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
+import LedgerPanel from '@/components/LedgerPanel.vue'
+import StationhouseLinkPanel from '@/components/StationhouseLinkPanel.vue'
 import type { EntryRow } from '@/data/types'
+import { useSessionStore } from '@/stores/session'
 
+const store = useSessionStore()
 const meta = moduleMeta('inspection')
 const columns = ["记录编号", "站点编号", "巡检日期", "巡检人员", "检查项目", "发现问题", "处理措施", "巡检状态"]
 const actions = ["完成巡检", "报告故障", "确认处置"]
@@ -89,9 +99,12 @@ const stats = [{"label": "本月巡检次数", "value": 0}, {"label": "已巡检
 
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
+const duplicatesRemoved = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
+const linkPanel = ref<InstanceType<typeof StationhouseLinkPanel> | null>(null)
+const ledgerPanel = ref<InstanceType<typeof LedgerPanel> | null>(null)
 const statusSummary = computed(() =>
   statuses.map((status: string) => ({
     status,
@@ -114,12 +127,16 @@ function openCreate() {
 
 function runAction(action: string, row: EntryRow) {
   errorMessage.value = ''
-  const result = applyAction(meta.key, Number(row.id), action)
+  const result = applyAction(meta.key, Number(row.id), action, {
+    role: store.role,
+    operator: store.operator,
+  })
   if (!result.ok) {
     errorMessage.value = result.message
     return
   }
   reload()
+  ledgerPanel.value?.reload()
 }
 
 function reload() {
@@ -128,6 +145,8 @@ function reload() {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items
     total.value = payload.total
+    duplicatesRemoved.value = payload.duplicatesRemoved ?? 0
+    linkPanel.value?.reload()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '巡检记录列表读取失败'
   }
@@ -135,3 +154,10 @@ function reload() {
 
 onMounted(reload)
 </script>
+
+<style scoped>
+.dup-tip {
+  background: #fef3c7;
+  color: #92400e;
+}
+</style>

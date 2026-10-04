@@ -67,6 +67,8 @@
       <span>共 {{ total }} 条监测站点记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
+    <LedgerPanel ref="ledgerRef" :module-key="meta.key" :title="meta.name + '台账'" />
+
   </section>
 </template>
 
@@ -79,9 +81,12 @@ import {
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
+import LedgerPanel from '@/components/LedgerPanel.vue'
 import type { EntryRow } from '@/data/types'
+import { useSessionStore } from '@/stores/session'
 
 const meta = moduleMeta('station')
+const store = useSessionStore()
 const columns = ["站点编号", "站点名称", "站点类型", "所在河流", "经纬度坐标", "建站年份", "管理单位", "运行状态"]
 const actions = ["升级为加强", "登记故障", "撤销站点"]
 const statuses = ["正常运行", "设备故障", "汛期加强", "暂停运行", "已撤销"]
@@ -92,6 +97,7 @@ const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
 const filterFields = columns.slice(0, 3)
+const ledgerRef = ref<InstanceType<typeof LedgerPanel> | null>(null)
 const statusSummary = computed(() =>
   statuses.map((status: string) => ({
     status,
@@ -114,12 +120,13 @@ function openCreate() {
 
 function runAction(action: string, row: EntryRow) {
   errorMessage.value = ''
-  const result = applyAction(meta.key, Number(row.id), action)
+  const result = applyAction(meta.key, Number(row.id), action, { role: store.role, operator: store.operator })
   if (!result.ok) {
     errorMessage.value = result.message
     return
   }
   reload()
+  ledgerRef.value?.reload()
 }
 
 function reload() {
