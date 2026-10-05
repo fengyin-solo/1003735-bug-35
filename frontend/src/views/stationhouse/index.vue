@@ -33,17 +33,42 @@
       <button class="btn ghost" type="button" @click="resetFilters">重置条件</button>
     </form>
 
+    <div class="batch-bar">
+      <span>已选 {{ selectedIds.length }} 条待验收记录</span>
+      <button
+        class="btn primary"
+        type="button"
+        :disabled="!selectedIds.length"
+        @click="acceptSelected"
+      >
+        批量通过验收
+      </button>
+      <RouterLink class="link" to="/acceptance">前往验收详情</RouterLink>
+    </div>
+
     <table class="data-table">
       <thead>
         <tr>
+          <th>验收</th>
           <th v-for="column in columns" :key="column">{{ column }}</th>
+          <th>费用状态</th>
           <th>当前状态</th>
           <th>可执行动作</th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="row in rows" :key="String(row.id)">
+          <td>
+            <input
+              v-if="row.status === '已完成'"
+              type="checkbox"
+              :checked="selectedIds.includes(Number(row.id))"
+              @change="toggleSelect(Number(row.id))"
+            />
+            <span v-else>—</span>
+          </td>
           <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
+          <td>{{ row['费用状态'] ?? '—' }}</td>
           <td>{{ row.status }}</td>
           <td class="row-actions">
             <button
@@ -55,16 +80,25 @@
             >
               {{ action }}
             </button>
+            <button
+              v-if="row.status === '已完成'"
+              class="link"
+              type="button"
+              @click="acceptOne(row)"
+            >
+              通过验收
+            </button>
           </td>
         </tr>
         <tr v-if="!rows.length">
-          <td :colspan="columns.length + 2" class="empty-state">暂无站房维护数据，可先登记站房维护记录</td>
+          <td :colspan="columns.length + 3" class="empty-state">暂无站房维护数据，可先登记站房维护记录</td>
         </tr>
       </tbody>
     </table>
 
     <footer class="page-foot">
       <span>共 {{ total }} 条站房维护记录</span>
+      <span v-if="noticeMessage" class="notice-text">{{ noticeMessage }}</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
   </section>
@@ -74,23 +108,27 @@
 import { computed, onMounted, ref } from 'vue'
 
 import {
+  acceptMaintenanceBatch,
   downloadEntries,
-  listEntries,
+  listMaintenanceEntries,
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
 import type { EntryRow } from '@/data/types'
+import { useSessionStore } from '@/stores/session'
 
 const meta = moduleMeta('stationhouse')
 const columns = ["记录编号", "站点编号", "维护类型", "维护内容", "维护单位", "维护日期", "费用支出", "维护状态"]
-const actions = ["安排维护", "确认完工", "通过验收"]
+const actions = ["安排维护", "确认完工"]
 const statuses = ["待安排", "已安排", "施工中", "已完成", "已验收"]
-const stats = [{"label": "待维护项数", "value": 0}, {"label": "施工中项数", "value": 0}, {"label": "本月已验收", "value": 0}]
 
+const session = useSessionStore()
 const rows = ref<EntryRow[]>([])
 const total = ref(0)
 const errorMessage = ref('')
+const noticeMessage = ref('')
 const filters = ref<Record<string, string>>({})
+const selectedIds = ref<number[]>([])
 const filterFields = columns.slice(0, 3)
 const statusSummary = computed(() =>
   statuses.map((status: string) => ({
@@ -98,6 +136,17 @@ const statusSummary = computed(() =>
     count: rows.value.filter((row) => String(row.status) === status).length,
   })),
 )
+const stats = computed(() => [
+  { label: '待维护项数', value: rows.value.filter((row) => row.status === '待安排' || row.status === '已安排').length },
+  { label: '施工中项数', value: rows.value.filter((row) => row.status === '施工中').length },
+  { label: '本月已验收', value: rows.value.filter((row) => row.status === '已验收').length },
+])
+
+function toggleSelect(id: number) {
+  selectedIds.value = selectedIds.value.includes(id)
+    ? selectedIds.value.filter((item) => item !== id)
+    : [...selectedIds.value, id]
+}
 
 function resetFilters() {
   filters.value = {}
@@ -114,6 +163,7 @@ function openCreate() {
 
 function runAction(action: string, row: EntryRow) {
   errorMessage.value = ''
+  noticeMessage.value = ''
   const result = applyAction(meta.key, Number(row.id), action)
   if (!result.ok) {
     errorMessage.value = result.message
@@ -122,10 +172,31 @@ function runAction(action: string, row: EntryRow) {
   reload()
 }
 
+function acceptOne(row: EntryRow) {
+  accept([Number(row.id)])
+}
+
+function acceptSelected() {
+  accept(selectedIds.value)
+}
+
+function accept(ids: number[]) {
+  errorMessage.value = ''
+  noticeMessage.value = ''
+  const result = acceptMaintenanceBatch(ids, session.operatorProfile)
+  if (!result.ok) {
+    errorMessage.value = result.message
+  } else {
+    noticeMessage.value = result.message
+    selectedIds.value = []
+  }
+  reload()
+}
+
 function reload() {
   errorMessage.value = ''
   try {
-    const payload = listEntries(meta.key, filters.value)
+    const payload = listMaintenanceEntries(filters.value)
     rows.value = payload.items
     total.value = payload.total
   } catch (error) {

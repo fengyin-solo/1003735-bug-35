@@ -16,6 +16,8 @@ const Cableway = () => import('@/views/cableway/index.vue')
 const Sediment = () => import('@/views/sediment/index.vue')
 const Communication = () => import('@/views/communication/index.vue')
 const Stationhouse = () => import('@/views/stationhouse/index.vue')
+const Acceptance = () => import('@/views/acceptance/index.vue')
+const Ledger = () => import('@/views/ledger/index.vue')
 const Calibration = () => import('@/views/calibration/index.vue')
 const Inspection = () => import('@/views/inspection/index.vue')
 const Plan = () => import('@/views/plan/index.vue')
@@ -39,6 +41,8 @@ const router = createRouter({
     { path: '/sediment', name: 'sediment', component: Sediment },
     { path: '/communication', name: 'communication', component: Communication },
     { path: '/stationhouse', name: 'stationhouse', component: Stationhouse },
+    { path: '/acceptance', name: 'acceptance', component: Acceptance },
+    { path: '/ledger', name: 'ledger', component: Ledger },
     { path: '/calibration', name: 'calibration', component: Calibration },
     { path: '/inspection', name: 'inspection', component: Inspection },
     { path: '/plan', name: 'plan', component: Plan },

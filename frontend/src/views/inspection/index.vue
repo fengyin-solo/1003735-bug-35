@@ -67,6 +67,40 @@
       <span>共 {{ total }} 条巡检记录记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
     </footer>
+
+    <section class="panel" data-panel="stationhouse">
+      <header class="panel-head">
+        <h3>站房维护巡检面板</h3>
+        <RouterLink class="link" to="/acceptance">前往验收详情</RouterLink>
+      </header>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>记录编号</th>
+            <th>维护类型</th>
+            <th>维护日期</th>
+            <th>费用支出</th>
+            <th>费用状态</th>
+            <th>维护状态</th>
+            <th>关联待办</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="row in stationhousePanel" :key="String(row.id)">
+            <td>{{ row['记录编号'] }}</td>
+            <td>{{ row['维护类型'] }}</td>
+            <td>{{ row['维护日期'] }}</td>
+            <td>{{ row['费用支出'] }}</td>
+            <td>{{ row['费用状态'] }}</td>
+            <td>{{ row.status }}</td>
+            <td>{{ row['待办提醒'] }}</td>
+          </tr>
+          <tr v-if="!stationhousePanel.length">
+            <td colspan="7" class="empty-state">暂无站房维护记录</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
   </section>
 </template>
 
@@ -76,6 +110,7 @@ import { computed, onMounted, ref } from 'vue'
 import {
   downloadEntries,
   listEntries,
+  listStationhousePanel,
   moduleMeta,
   runAction as applyAction,
 } from '@/api/local-service'
@@ -88,6 +123,7 @@ const statuses = ["待巡检", "已巡检", "发现故障", "已处置"]
 const stats = [{"label": "本月巡检次数", "value": 0}, {"label": "已巡检站点", "value": 0}, {"label": "待处置故障", "value": 0}]
 
 const rows = ref<EntryRow[]>([])
+const stationhousePanel = ref<EntryRow[]>([])
 const total = ref(0)
 const errorMessage = ref('')
 const filters = ref<Record<string, string>>({})
@@ -128,6 +164,7 @@ function reload() {
     const payload = listEntries(meta.key, filters.value)
     rows.value = payload.items
     total.value = payload.total
+    stationhousePanel.value = listStationhousePanel()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '巡检记录列表读取失败'
   }
